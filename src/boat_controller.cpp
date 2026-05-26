@@ -14,13 +14,31 @@ static APManager         apManager;
 static WebServer         httpServer(80);
 static WebSocketsServer  wsServer(81);
 
+static bool              motorsEnabled = false;
+static bool              clientWasEverConnected = false;
+static unsigned long     lastBannerPrint = 0;
+
 // ---------------------------------------------------------------------------
-// WebSocket event → calls onMotorCommand()
+// WebSocket event → calls onMotorCommand() / onStartMotors()
 // ---------------------------------------------------------------------------
 static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) {
+  if (type == WStype_CONNECTED) {
+    clientWasEverConnected = true;
+    Serial.println("[WS] Client connected");
+    // Tell the client whether motors are already enabled
+    char buf[32];
+    snprintf(buf, sizeof(buf), "{\"motorsEnabled\":%s}",
+             motorsEnabled ? "true" : "false");
+    wsServer.sendTXT(num, buf);
+    return;
+  }
+
+  if (type == WStype_DISCONNECTED) {
+    Serial.println("[WS] Client disconnected");
+    return;
+  }
+
   if (type == WStype_TEXT) {
-    // Expected:  {"motor":"a","speed":127}
-    //            speed range: -255 .. +255
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, (const char *)payload);
 
@@ -29,11 +47,26 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
       return;
     }
 
+    // --- START command ------------------------------------------------------
+    if (doc["cmd"] && strcmp(doc["cmd"], "start") == 0) {
+      motorsEnabled = true;
+      onStartMotors();
+      // Notify all clients
+      wsServer.broadcastTXT("{\"motorsEnabled\":true}");
+      return;
+    }
+
+    // --- Motor command (only if enabled) ------------------------------------
     const char *motorStr = doc["motor"];
     int         speed    = doc["speed"] | 0;
 
     if (!motorStr || (motorStr[0] != 'a' && motorStr[0] != 'b')) {
       Serial.println("[WS] Invalid motor");
+      return;
+    }
+
+    if (!motorsEnabled) {
+      Serial.println("[WS] Ignored — motors not enabled");
       return;
     }
 
@@ -59,12 +92,25 @@ void setupBoatController() {
   // --- WebSocket server ----------------------------------------------------
   wsServer.begin();
   wsServer.onEvent(onWsEvent);
+}
 
-  Serial.printf("[Boat] Ready — connect to '%s' and browse to %s\n",
-                apManager.getSsid(), apManager.getIp().toString().c_str());
+bool isClientConnected() {
+  return clientWasEverConnected;
 }
 
 void loopBoatController() {
   httpServer.handleClient();
   wsServer.loop();
+
+  // Loop-print the banner every 3 seconds until a client connects
+  if (!clientWasEverConnected) {
+    unsigned long now = millis();
+    if (now - lastBannerPrint >= 3000) {
+      lastBannerPrint = now;
+      Serial.printf("\n⛵ InnoX Boat ready at %s (SSID: %s)\n",
+                    apManager.getIp().toString().c_str(),
+                    apManager.getSsid());
+      Serial.println("   Open the web page and tap START to enable motors.");
+    }
+  }
 }
