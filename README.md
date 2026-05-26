@@ -1,6 +1,6 @@
-# ⛵ InnoX Boat — Student Lab
+# ⛵ InnoX Boat — Pre-Camp Activity
 
-Welcome to the **InnoX Boat** embedded systems lab! You'll program an ESP32-C3
+Welcome to the **InnoX Boat** embedded systems pre-camp activity! You'll program an ESP32-C3
 microcontroller to drive a twin-motor RC boat over Wi-Fi.
 
 ---
@@ -8,7 +8,7 @@ microcontroller to drive a twin-motor RC boat over Wi-Fi.
 ## Quick Start
 
 ### 1. Connect the board
-Plug the Seeed XIAO ESP32C3 into your computer with a USB cable.
+Plug the boat controller into your computer with a USB cable.
 
 ### 2. Find your board's COM port number
 
