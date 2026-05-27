@@ -47,6 +47,12 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
       return;
     }
 
+    // --- App-level keepalive ping → pong ------------------------------------
+    if (doc["ping"]) {
+      wsServer.sendTXT(num, "{\"pong\":1}");
+      return;
+    }
+
     // --- START command ------------------------------------------------------
     if (doc["cmd"] && strcmp(doc["cmd"], "start") == 0) {
       motorsEnabled = true;
@@ -81,6 +87,9 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
 void setupBoatController() {
   // --- WiFi AP -------------------------------------------------------------
   apManager.setMode(WIFI_AP);
+  // Default password — students can change this or add a setPassword() call
+  // in main.cpp before setupBoatController() to override it.
+  apManager.setPassword("innox1234");
   apManager.begin();
 
   // --- HTTP server — serve the control page --------------------------------
@@ -92,6 +101,8 @@ void setupBoatController() {
   // --- WebSocket server ----------------------------------------------------
   wsServer.begin();
   wsServer.onEvent(onWsEvent);
+  // Auto-ping every 3 s, wait 5 s for pong, disconnect after 3 missed pongs
+  wsServer.enableHeartbeat(3000, 5000, 3);
 }
 
 bool isClientConnected() {

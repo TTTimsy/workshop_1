@@ -22,65 +22,111 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
+    position: relative;
   }
-  h1 { font-size: 1.5rem; margin-bottom: 4px; letter-spacing: 2px; }
+  h1 { font-size: 1.8rem; margin-bottom: 6px; letter-spacing: 3px; }
   #status {
-    font-size: 0.85rem;
-    padding: 4px 14px;
-    border-radius: 12px;
-    margin-bottom: 20px;
+    font-size: 1rem;
+    padding: 6px 20px;
+    border-radius: 14px;
+    margin-bottom: 24px;
     background: #ff4444;
     transition: background 0.3s;
   }
   #status.connected { background: #44bb44; }
+
+  /* --- Disconnect overlay --- */
+  #disconnect-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #disconnect-overlay.visible { display: flex; }
+  #disconnect-overlay .icon {
+    font-size: 4rem;
+    line-height: 1;
+  }
+  #disconnect-overlay .msg {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #ff6b6b;
+  }
+  #disconnect-overlay .sub {
+    font-size: 0.95rem;
+    color: #aaa;
+    text-align: center;
+    max-width: 300px;
+  }
+  #disconnect-overlay .retry-btn {
+    margin-top: 8px;
+    padding: 12px 36px;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 30px;
+    background: #d4a017;
+    color: #1a1a2e;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  #disconnect-overlay .retry-btn:active {
+    background: #f0c040;
+  }
 
   .motors-container {
     display: flex;
     flex-direction: row;
     justify-content: center;
     align-items: center;
-    gap: 40px;
+    gap: 60px;
     width: 100%;
-    max-width: 400px;
+    max-width: 600px;
   }
   .motor-group {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
   .motor-label {
-    font-size: 0.9rem;
+    font-size: 1.1rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
     color: #888;
   }
   .speed-label {
-    font-size: 0.8rem;
+    font-size: 1rem;
     color: #aaa;
     font-variant-numeric: tabular-nums;
-    min-width: 3em;
+    min-width: 3.5em;
     text-align: center;
   }
 
   /* --- Custom slider track --- */
   .slider-track {
     position: relative;
-    width: 64px;
-    height: 280px;
+    width: 100px;
+    height: min(60vh, 420px);
+    min-height: 300px;
     background: linear-gradient(to top, #6a2d2d 50%, #2d6a2d 50%);
-    border-radius: 32px;
+    border-radius: 50px;
     cursor: pointer;
     touch-action: none;
-    box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+    box-shadow: inset 0 2px 12px rgba(0,0,0,0.5);
   }
   .slider-track::before {
     content: '';
     position: absolute;
     top: 50%;
-    left: 8px;
-    right: 8px;
+    left: 12px;
+    right: 12px;
     height: 2px;
     background: rgba(255,255,255,0.3);
     transform: translateY(-1px);
@@ -90,20 +136,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   /* --- Thumb --- */
   .slider-thumb {
     position: absolute;
-    left: 6px;
-    right: 6px;
-    height: 20px;
-    top: 130px;              /* centre of a 280px track */
+    left: 8px;
+    right: 8px;
+    height: 32px;
+    top: 50%;
     background: #ddd;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    border-radius: 16px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    transform: translateY(-50%);
     transition: top 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
     pointer-events: none;
-  }
-  @media (max-width: 400px) {
-    .slider-thumb {
-      top: 100px;            /* centre of a 220px track */
-    }
   }
   .slider-track.dragging .slider-thumb {
     transition: none;
@@ -111,9 +153,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   /* --- Start button --- */
   .start-btn {
-    margin-top: 24px;
-    padding: 14px 40px;
-    font-size: 1.1rem;
+    margin-top: 28px;
+    padding: 16px 48px;
+    font-size: 1.2rem;
     font-weight: 700;
     letter-spacing: 2px;
     border: none;
@@ -136,10 +178,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     color: #fff;
   }
 
-  @media (max-width: 400px) {
-    .slider-track { height: 220px; width: 54px; }
+  @media (max-width: 500px) {
+    .slider-track { width: 76px; min-height: 260px; }
+    .motors-container { gap: 36px; }
+    h1 { font-size: 1.4rem; }
+    .motor-label { font-size: 0.95rem; }
+    .speed-label { font-size: 0.85rem; }
+    .start-btn { padding: 14px 36px; font-size: 1rem; }
+  }
+  @media (max-width: 360px) {
+    .slider-track { width: 64px; min-height: 220px; }
     .motors-container { gap: 24px; }
-    h1 { font-size: 1.2rem; }
   }
 </style>
 </head>
@@ -170,14 +219,49 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
 <button id="startBtn" class="start-btn" disabled>⏻ START MOTORS</button>
 
+<!-- Disconnect overlay -->
+<div id="disconnect-overlay">
+  <div class="icon">⚠️</div>
+  <div class="msg">Connection Lost</div>
+  <div class="sub">Signal weak or boat is out of range.<br>Reconnecting automatically…</div>
+  <button class="retry-btn" id="retryBtn">↻ Retry Now</button>
+</div>
+
 <script>
 (function() {
   const statusEl = document.getElementById('status');
   const startBtn = document.getElementById('startBtn');
+  const overlayEl = document.getElementById('disconnect-overlay');
+  const retryBtn = document.getElementById('retryBtn');
   let ws = null;
   let reconnectTimer = null;
   let sendThrottle = {};
   let motorsEnabled = false;
+
+  // --- Reconnection state ---
+  let reconnectAttempt = 0;
+  let reconnectBaseDelay = 1000;    // start at 1s
+  let reconnectMaxDelay = 30000;    // cap at 30s
+  let wasEverConnected = false;     // set true after first successful onopen
+
+  // --- App-level keepalive ---
+  let pingInterval = null;
+  let pongTimeout = null;
+  let lastPongTime = 0;
+  const PING_INTERVAL = 3000;       // send {"ping":1} every 3s
+  const PONG_TIMEOUT = 9000;        // disconnect if no pong for 9s
+
+  // --- Connection timeout ---
+  let connectTimeout = null;
+  const CONNECT_TIMEOUT = 5000;     // fail if not open within 5s
+
+  // --- Disconnect overlay ---
+  function showOverlay() {
+    overlayEl.classList.add('visible');
+  }
+  function hideOverlay() {
+    overlayEl.classList.remove('visible');
+  }
 
   // --- Slider tracks (enable/disable based on motorsEnabled) ---
   const sliderTracks = document.querySelectorAll('.slider-track');
@@ -190,16 +274,73 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   }
   setSlidersEnabled(false);  // disabled until START
 
+  // --- App-level ping/pong ---
+  function startKeepalive() {
+    stopKeepalive();
+    lastPongTime = Date.now();
+    pingInterval = setInterval(function() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ ping: 1 }));
+        // If we haven't seen a pong in PONG_TIMEOUT, treat as dead
+        if (Date.now() - lastPongTime > PONG_TIMEOUT) {
+          console.warn('[Keepalive] No pong received, forcing disconnect');
+          ws.close();
+        }
+      }
+    }, PING_INTERVAL);
+  }
+
+  function stopKeepalive() {
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+    if (pongTimeout)  { clearTimeout(pongTimeout);   pongTimeout = null; }
+  }
+
+  function handlePong() {
+    lastPongTime = Date.now();
+  }
+
+  // --- Exponential backoff ---
+  function getReconnectDelay() {
+    var delay = reconnectBaseDelay * Math.pow(2, reconnectAttempt);
+    if (delay > reconnectMaxDelay) delay = reconnectMaxDelay;
+    // Add small random jitter (±20%) to avoid thundering herd
+    delay = delay * (0.8 + Math.random() * 0.4);
+    return Math.round(delay);
+  }
+
   function connect() {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+    stopKeepalive();
+
     ws = new WebSocket('ws://' + window.location.hostname + ':81');
+
+    // Connection timeout
+    if (connectTimeout) clearTimeout(connectTimeout);
+    connectTimeout = setTimeout(function() {
+      if (ws && ws.readyState === WebSocket.CONNECTING) {
+        console.warn('[WS] Connection timed out');
+        ws.close();
+      }
+    }, CONNECT_TIMEOUT);
+
     ws.onopen = function() {
+      if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+      wasEverConnected = true;
+      reconnectAttempt = 0;         // reset backoff on success
+      hideOverlay();
       statusEl.textContent = 'Connected';
       statusEl.classList.add('connected');
+      startKeepalive();
     };
+
     ws.onmessage = function(e) {
       try {
         var data = JSON.parse(e.data);
+        if (data.hasOwnProperty('pong')) {
+          handlePong();
+          return;
+        }
         if (data.hasOwnProperty('motorsEnabled')) {
           motorsEnabled = data.motorsEnabled;
           setSlidersEnabled(motorsEnabled);
@@ -211,23 +352,45 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
       } catch(_) {}
     };
+
     ws.onclose = function() {
+      stopKeepalive();
       statusEl.textContent = 'Disconnected — reconnecting...';
       statusEl.classList.remove('connected');
-      motorsEnabled = false;
-      setSlidersEnabled(false);
-      startBtn.textContent = '⏻ START MOTORS';
-      startBtn.classList.remove('active');
-      startBtn.disabled = false;
+
+      // Only reset motors state if we were connected (not on first load)
+      if (wasEverConnected) {
+        motorsEnabled = false;
+        setSlidersEnabled(false);
+        startBtn.textContent = '⏻ START MOTORS';
+        startBtn.classList.remove('active');
+        startBtn.disabled = false;
+        showOverlay();
+      }
+
       scheduleReconnect();
     };
-    ws.onerror = function() { ws.close(); };
+
+    ws.onerror = function() {
+      // onclose fires after onerror, so just close to trigger reconnect
+      ws.close();
+    };
   }
 
   function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(connect, 2000);
+    // On first load before ever connected, reconnect quickly
+    var delay = wasEverConnected ? getReconnectDelay() : 1000;
+    reconnectAttempt++;
+    reconnectTimer = setTimeout(connect, delay);
   }
+
+  // --- Manual retry ---
+  retryBtn.addEventListener('click', function() {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectAttempt = 0;   // reset so retry is instant
+    connect();
+  });
 
   // --- START button ---
   startBtn.disabled = false;
@@ -245,7 +408,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   // Throttle — max one send per motor per 50ms
   function throttledSend(motor, speed) {
-    const now = Date.now();
+    var now = Date.now();
     if (!sendThrottle[motor] || now - sendThrottle[motor].last > 50) {
       sendThrottle[motor] = { last: now };
       sendCmd(motor, speed);
@@ -257,20 +420,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   var activeTrack = null;
 
   document.querySelectorAll('.slider-track').forEach(function(track) {
-    const motor   = track.getAttribute('data-motor');
-    const thumb   = track.querySelector('.slider-thumb');
-    const speedEl = document.getElementById('speed-' + motor);
+    var motor   = track.getAttribute('data-motor');
+    var thumb   = track.querySelector('.slider-thumb');
+    var speedEl = document.getElementById('speed-' + motor);
 
     function posToSpeed(clientY) {
-      const rect = track.getBoundingClientRect();
-      const frac = 1 - (clientY - rect.top) / rect.height;
-      const clamped = Math.max(0, Math.min(1, frac));
+      var rect = track.getBoundingClientRect();
+      var frac = 1 - (clientY - rect.top) / rect.height;
+      var clamped = Math.max(0, Math.min(1, frac));
       return Math.round(clamped * 510 - 255);           // -255 .. +255
     }
 
     function updateThumb(speed) {
-      const frac = 1 - (speed + 255) / 510;             // +255→top, -255→bottom
-      const topPx = frac * (track.clientHeight - thumb.clientHeight);
+      var frac = 1 - (speed + 255) / 510;               // +255→top, -255→bottom
+      var topPx = frac * (track.clientHeight - thumb.clientHeight);
       thumb.style.top = topPx + 'px';
       speedEl.textContent = speed;
     }

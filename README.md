@@ -62,7 +62,13 @@ pio device monitor --port COM5 --baud 115200
 ### 6. Connect to the boat
 
 Join the Wi-Fi network **`InnoX-Boat-XXXX`** (the XXXX is unique to your board).
+The Wi-Fi password is **`innox1234`**.
 Open your browser and go to **http://192.168.4.1**
+
+> **🔒 Security note:** The boat's Wi-Fi is password-protected by default.
+> If the connection drops, the web page will show a **⚠️ Connection Lost** overlay
+> and automatically try to reconnect. Tap **↻ Retry Now** to attempt an immediate
+> reconnection.
 
 ### 7. Tap START
 
@@ -77,7 +83,14 @@ You'll hear a chime from the motors, then you can use the throttle sliders to co
 | `src/main.cpp` | **✏️  This is where you write all your code** |
 | `src/motor.h` | Reference — the `Motor` class lives here (read but don't edit) |
 | `src/chime.h` | Reference — the `ChimePlayer` and note definitions (read but don't edit) |
-| everything else | Hidden "plumbing" — WiFi, web server, etc. Don't touch |
+| `src/html.h` | The web page (sliders, disconnect overlay, reconnect logic) — no need to edit |
+| everything else | Hidden "plumbing" — WiFi, web server, heartbeat, pong handler, etc. Don't touch |
+
+### Web Page Features
+
+- **Big slider controls** — large touch-friendly throttles, sized to fill your screen
+- **Connection resilience** — if the signal drops, a full-screen **⚠️ Connection Lost** overlay appears; the page auto-reconnects with exponential backoff (1s → 30s)
+- **Password-protected AP** — the boat's Wi-Fi requires **`innox1234`** by default
 
 ---
 
