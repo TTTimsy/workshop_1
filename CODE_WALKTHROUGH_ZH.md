@@ -113,17 +113,3 @@
 ### `tools/midi_to_chime.py`
 
 这个脚本解析 MIDI 文件的 `MThd` 和 `MTrk` 块，只保留 Note On/Off 事件。它把音符开始和结束配对，计算持续时间，再把同时开始的音符合并成 `ChimeStep`。最后输出 C++ 头文件，里面有 `_song_steps[]` 和 `songData`，可以被 `ChimePlayer.loadSong()` 加载。
-
-## `ap_manager.h` 第 4-5 行为什么会报红
-
-第 4 行 `#include <Arduino.h>` 和第 5 行 `#include <WiFi.h>` 是正确代码。它们报红的根因不是这两行写错，而是本机 PlatformIO 的 `espressif32` 平台包损坏：`C:\Users\huawei\.platformio\platforms\espressif32` 缺少 `platform.json`，导致 PlatformIO 和 IntelliSense 找不到 Arduino/ESP32 框架头文件。
-
-已经做过的修复：
-
-1. 把 `C:\Users\huawei\.platformio\penv\Scripts` 加入用户 PATH。
-2. 将损坏的 `espressif32` 平台包移到 `C:\Users\huawei\.platformio\broken-platform-backups`。
-3. 重新安装 `platformio/espressif32`。
-4. 运行 `pio run -t compiledb` 生成 `compile_commands.json`。
-5. 添加 `.vscode/settings.json`，让 IntelliSense 使用这个编译数据库。
-
-如果 VS Code 仍显示旧红线，执行一次 `Developer: Reload Window`，或者运行 PlatformIO 的 `Rebuild IntelliSense Index`。
