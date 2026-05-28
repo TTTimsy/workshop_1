@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include "motor.h"
 
+// chime.h 提供“让电机唱歌”的能力：
+// 它先定义常用音符频率，再用 ChimePlayer 把多个音符排成非阻塞队列。
+// 非阻塞的意思是播放旋律时 loop() 仍能继续处理 Wi-Fi 和网页指令。
+
 // ===========================================================================
 //  Pre-defined note frequencies (Hz)
 //
@@ -136,14 +140,20 @@
 // ===========================================================================
 
 struct ChimeNote {
+  // 这一拍要驱动哪一个电机。
   Motor* motor;           // which motor to play on
+  // 音符频率，单位 Hz。
   int    freq;            // frequency in Hz
+  // PWM 占空比，0-255；数值越大声音/力度越明显。
   int    duty;            // duty cycle 0-255
 };
 
 struct ChimeStep {
+  // 指向这一拍里所有同时播放的音符。
   ChimeNote* notes;
+  // 这一拍里有几个音符，例如两个电机同时响就是 2。
   int        noteCount;
+  // 这一拍持续多久；同一步里的音符共享同一个时长。
   int        durationMs;     // all notes in this step share the same duration
 };
 
@@ -153,8 +163,11 @@ struct ChimeStep {
 // ===========================================================================
 
 struct SongNote {
+  // MIDI 转换后使用 track 索引，播放时再映射到 motorA/motorB。
   uint8_t  track;       // 0 = motorA, 1 = motorB, ...
+  // 音符频率。
   uint16_t freq;        // frequency in Hz
+  // 占空比，来自 MIDI velocity 映射。
   uint8_t  duty;        // duty cycle 0-255
 };
 
@@ -163,15 +176,22 @@ struct SongNote {
 #define SONG_STEP_MAX_NOTES 8
 
 struct SongStep {
+  // 这一步持续时间。
   uint16_t       durationMs;
+  // 这一步同时播放的音符数量。
   uint8_t        noteCount;
+  // 固定大小数组，避免生成的 song.h 还要再定义许多小数组。
   SongNote       notes[SONG_STEP_MAX_NOTES];   // inlined
 };
 
 struct SongData {
+  // 歌曲总共有多少步。
   uint16_t        stepCount;
+  // 原始或覆盖后的速度信息，主要用于记录。
   uint16_t        tempoBpm;
+  // MIDI 中有音符的轨道数量。
   uint8_t         trackCount;
+  // 指向 PROGMEM 中的步骤数组。
   const SongStep* steps;     // pointer into PROGMEM
 };
 
@@ -184,6 +204,7 @@ public:
 
   // --- Single-note convenience (old behaviour) --------------------------
   void add(Motor* motor, int freq, int duty, int durationMs) {
+    // 单音是“一步里只有一个音符”的简写。
     startStep();
     addToStep(motor, freq, duty);
     endStep(durationMs);
@@ -191,11 +212,13 @@ public:
 
   // --- Multi-note step building -----------------------------------------
   void startStep() {
+    // 开始收集一个新的同时播放步骤，清空临时音符数量。
     _pendingCount = 0;
   }
 
   void addToStep(Motor* motor, int freq, int duty) {
     if (_pendingCount >= _pendingCapacity) {
+      // 临时数组不够时扩容：第一次 4 个，之后翻倍。
       int newCap = _pendingCapacity ? _pendingCapacity * 2 : 4;
       ChimeNote* newArr = new ChimeNote[newCap];
       for (int i = 0; i < _pendingCount; i++) newArr[i] = _pendingNotes[i];
@@ -214,6 +237,7 @@ public:
 
     // Grow step array
     if (_stepCount >= _stepCapacity) {
+      // 步骤数组不够时同样扩容。
       int newCap = _stepCapacity ? _stepCapacity * 2 : 8;
       ChimeStep* newArr = new ChimeStep[newCap];
       for (int i = 0; i < _stepCount; i++) newArr[i] = _steps[i];
@@ -223,6 +247,7 @@ public:
     }
 
     // Copy pending notes into a persistent array for this step
+    // 把临时音符复制到属于这个步骤的独立数组里，避免后续 startStep() 覆盖。
     ChimeNote* stepNotes = new ChimeNote[_pendingCount];
     for (int i = 0; i < _pendingCount; i++) stepNotes[i] = _pendingNotes[i];
 
@@ -234,6 +259,7 @@ public:
 
   // --- Start playing -----------------------------------------------------
   void play() {
+    // 从第 0 步开始播放，真正的持续推进交给 update()。
     _currentStep = 0;
     _started = true;
     _playStep(0);
@@ -249,6 +275,7 @@ public:
   //    chime.play();
   void loadSong(const SongData* song, Motor** trackMap) {
     // Clear any previously loaded or manually built steps
+    // 先清空已有手写旋律，再加载 MIDI 转出的歌曲。
     _clear();
 
     _stepCount   = song->stepCount;
@@ -256,6 +283,7 @@ public:
     _steps = new ChimeStep[_stepCount];
 
     for (uint16_t s = 0; s < _stepCount; s++) {
+      // 从 song->steps 逐步复制到 RAM 里的 ChimeStep，方便运行时访问。
       const SongStep& songStep = song->steps[s];
 
       _steps[s].durationMs = songStep.durationMs;
@@ -263,6 +291,7 @@ public:
       _steps[s].notes      = new ChimeNote[_steps[s].noteCount];
 
       for (uint8_t n = 0; n < _steps[s].noteCount; n++) {
+        // 把歌曲中的 track 编号转换为真正的 Motor*。
         const SongNote& songNote = songStep.notes[n];
 
         uint8_t t = songNote.track;
@@ -275,18 +304,21 @@ public:
 
   // --- Call every loop() — advances to next step when current expires ----
   void update() {
+    // 没开始播放或当前步骤无效时，直接返回。
     if (!_started || _currentStep < 0 || _currentStep >= _stepCount) return;
 
     // Check if ALL motors in this step have finished their notes
     ChimeStep& step = _steps[_currentStep];
     bool allDone = true;
     for (int i = 0; i < step.noteCount; i++) {
+      // 每个电机自己判断音符是否到期。
       Motor* m = step.notes[i].motor;
       m->update();
       if (m->isPlaying()) allDone = false;
     }
 
     if (allDone) {
+      // 当前步骤所有音符都结束后，切到下一步。
       _currentStep++;
       if (_currentStep < _stepCount) {
         _playStep(_currentStep);
@@ -314,6 +346,7 @@ private:
   int        _pendingCapacity;
 
   void _clear() {
+    // 这里目前只重置计数；如果频繁 loadSong，可进一步释放各步骤 notes 以避免内存泄漏。
     _stepCount = 0;
     _stepCapacity = 0;
     _currentStep = -1;
@@ -322,6 +355,7 @@ private:
   }
 
   void _playStep(int idx) {
+    // 播放某一步：同一步里的所有音符几乎同时启动。
     ChimeStep& step = _steps[idx];
     for (int i = 0; i < step.noteCount; i++) {
       ChimeNote& n = step.notes[i];

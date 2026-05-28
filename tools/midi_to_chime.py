@@ -16,6 +16,9 @@ import math
 import struct
 import sys
 
+# 这个脚本不在 ESP32 上运行，而是在电脑上运行：
+# 它读取 MIDI 文件，把音符事件转换成 ChimePlayer 能加载的 C++ song.h。
+
 # ===========================================================================
 # MIDI File Parsing
 # ===========================================================================
@@ -24,14 +27,19 @@ class MidiFile:
     """Minimal MIDI file parser — handles format 0 and 1."""
 
     def __init__(self, path):
+        # tracks 保存每条轨道的音符事件：(tick, 是否note_on, MIDI音高, 力度)。
         self.tracks = []        # list of lists of (tick, is_note_on, note, velocity)
+        # tick_rate 是每个四分音符包含多少 tick；MIDI 文件头会覆盖默认值。
         self.tick_rate = 480    # ticks per quarter note
+        # us_per_qn 是一个四分音符多少微秒；默认 120 BPM。
         self.us_per_qn = 500000  # default 120 BPM
 
         with open(path, "rb") as f:
+            # 用二进制方式解析 MIDI 块结构。
             self._parse(f)
 
     def _read_varlen(self, f):
+        # MIDI 的可变长度整数每个字节低 7 位存数据，最高位表示是否还有后续字节。
         value = 0
         while True:
             b = f.read(1)[0]
@@ -41,6 +49,7 @@ class MidiFile:
 
     def _parse(self, f):
         # --- Header ---
+        # 标准 MIDI 文件必须以 MThd 头块开始。
         magic = f.read(4)
         if magic != b"MThd":
             raise ValueError("Not a valid MIDI file (no MThd)")
@@ -55,10 +64,12 @@ class MidiFile:
         division = struct.unpack(">H", data[4:6])[0]
 
         if division & 0x8000:
+            # 高位为 1 时表示 SMPTE 时间格式。
             fps = 256 - ((division >> 8) & 0xFF)
             subframes = division & 0xFF
             self.tick_rate = fps * subframes
         else:
+            # 常见情况：division 直接表示每个四分音符的 tick 数。
             self.tick_rate = division
 
         print(f"  Format: {format_type}, Tracks: {num_tracks}, "
@@ -88,6 +99,7 @@ class MidiFile:
 
     def _parse_track(self, data):
         """Parse track events. Returns list of (tick, is_note_on, note, velocity)."""
+        # events 只保留本项目关心的 Note On / Note Off 事件。
         events = []
         tick = 0
         i = 0
@@ -116,6 +128,7 @@ class MidiFile:
 
             if status == 0xFF:
                 # Meta event
+                # Meta event 包括速度、拍号、轨道名等；这里主要读取 tempo。
                 if i >= len(data):
                     break
                 meta_type = data[i]
@@ -204,6 +217,7 @@ def midi_to_note_name(midi_note):
     """Quantize a MIDI note to the nearest defined NOTE_* constant name.
     Clamps to C1 (24) or B7 (107) if outside range.
     """
+    # 项目只定义 C1-B7，超出范围时夹到最近可用音符。
     idx = max(24, min(107, midi_note))
     return _NOTE_NAMES[idx]
 
@@ -215,6 +229,7 @@ def midi_to_note_freq(midi_note):
 
 
 def velocity_to_duty(velocity, max_duty=100):
+    # MIDI velocity 是 1-127，这里映射到 PWM duty，默认最高只到 100，避免电机太猛。
     return max(1, min(max_duty, int(round(velocity / 127.0 * max_duty))))
 
 
@@ -222,6 +237,7 @@ def midi_to_steps(midi, tempo_bpm=120):
     """Convert parsed MIDI into a list of steps.
     Each step: (duration_ms, [(track_idx, freq, duty), ...])
     """
+    # 先根据 BPM 算出每个 tick 对应多少微秒。
     us_per_qn = 60_000_000 // tempo_bpm
     us_per_tick = us_per_qn / midi.tick_rate
 
@@ -230,6 +246,7 @@ def midi_to_steps(midi, tempo_bpm=120):
     all_notes = []
 
     for track_idx, events in enumerate(midi.tracks):
+        # active 记录已经 note_on 但还没 note_off 的音。
         for tick, is_on, note, velocity in events:
             key = (track_idx, note)
             if is_on:
@@ -259,6 +276,7 @@ def midi_to_steps(midi, tempo_bpm=120):
     n = len(all_notes)
 
     while i < n:
+        # 将起始 tick 非常接近的音符合并成同一个 ChimeStep，实现和弦/同时播放。
         step_start = all_notes[i][1]
         step_notes = []
         max_duration = 0
@@ -287,6 +305,7 @@ def midi_to_steps(midi, tempo_bpm=120):
 
 def steps_to_cpp(steps, track_count, tempo_bpm=120):
     """Convert steps to C++ header file."""
+    # 生成的 C++ 文件包含 SongStep 数组和一个 SongData 描述对象。
     lines = []
     lines.append("// Auto-generated from MIDI by tools/midi_to_chime.py")
     lines.append(f"// Original tempo: {tempo_bpm} BPM")
@@ -327,6 +346,7 @@ def steps_to_cpp(steps, track_count, tempo_bpm=120):
 # ===========================================================================
 
 def main():
+    # 解析命令行参数：输入 MIDI、可选 tempo、可选输出文件路径。
     parser = argparse.ArgumentParser(
         description="Convert MIDI file to ChimePlayer song header")
     parser.add_argument("input", help="Input .mid file")
@@ -340,6 +360,7 @@ def main():
     midi = MidiFile(args.input)
 
     if not midi.tracks:
+        # 没有任何音符轨道时无法生成歌曲。
         print("Error: No tracks with note events found", file=sys.stderr)
         sys.exit(1)
 
@@ -356,6 +377,7 @@ def main():
     cpp = steps_to_cpp(steps, len(midi.tracks), tempo)
 
     with open(args.output, "w") as f:
+        # 把生成的 C++ 头文件写到磁盘；默认是 src/song.h。
         f.write(cpp)
     print(f"Written to {args.output}", file=sys.stderr)
 

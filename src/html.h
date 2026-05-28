@@ -1,6 +1,10 @@
 #ifndef HTML_H
 #define HTML_H
 
+// INDEX_HTML 是烧录进固件里的完整网页：
+// ESP32 的 HTTP 服务器访问 "/" 时会把这段字符串直接发给浏览器。
+// 字符串内部包含 HTML 结构、CSS 样式和 JavaScript 控制逻辑。
+// 注意：这里面的内容属于网页源码，不能随便插入 C++ 注释，否则会变成网页内容。
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="en">
@@ -229,6 +233,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
 <script>
 (function() {
+  // 下面缓存网页上的关键 DOM 元素，后续连接状态和按钮状态都会改它们。
   const statusEl = document.getElementById('status');
   const startBtn = document.getElementById('startBtn');
   const overlayEl = document.getElementById('disconnect-overlay');
@@ -309,6 +314,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   }
 
   function connect() {
+    // 如果已有可用连接或正在连接，就不重复创建 WebSocket。
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
     stopKeepalive();
@@ -335,6 +341,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     };
 
     ws.onmessage = function(e) {
+      // ESP32 发回的消息包括 pong 和 motorsEnabled 状态同步。
       try {
         var data = JSON.parse(e.data);
         if (data.hasOwnProperty('pong')) {
@@ -401,6 +408,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   });
 
   function sendCmd(motor, speed) {
+    // 只有 WebSocket 打开时才发送油门命令，避免浏览器离线时报错。
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ motor: motor, speed: speed }));
     }
@@ -425,6 +433,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     var speedEl = document.getElementById('speed-' + motor);
 
     function posToSpeed(clientY) {
+      // 把手指/鼠标的 Y 坐标转换为 -255 到 +255 的速度。
       var rect = track.getBoundingClientRect();
       var frac = 1 - (clientY - rect.top) / rect.height;
       var clamped = Math.max(0, Math.min(1, frac));
@@ -432,6 +441,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function updateThumb(speed) {
+      // 根据速度反推滑块位置，并更新数字显示。
       var frac = 1 - (speed + 255) / 510;               // +255→top, -255→bottom
       var topPx = frac * (track.clientHeight - thumb.clientHeight);
       thumb.style.top = topPx + 'px';

@@ -1,0 +1,5 @@
+{
+    // 使用 PlatformIO 生成的编译数据库，让 VS Code/C++ IntelliSense 知道 Arduino.h、WiFi.h 等头文件在哪里。
+    // 如果 include 又变红，可以重新运行：pio run -t compiledb
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json"
+}
