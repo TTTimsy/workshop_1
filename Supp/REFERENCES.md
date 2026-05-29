@@ -4,6 +4,15 @@
 
 ## 论文资料
 
+0. Chunyue Li, Jiajia Jiang, Fajie Duan 等人，2019  
+   *Modeling and Experimental Testing of an Unmanned Surface Vehicle with Rudderless Double Thrusters*.  
+   作用：这是目前最贴近我们小船的参考。论文对象是“无舵、双推进器水面无人船”，它明确说明：两个推进器速度共同控制船速，左右推进器差速控制转向；直线运动需要左右推进器速度相同，差速为零。  
+   对我们的意义：强力支持“保留左右马达独立控制能力”，也支持在中间层使用“共同速度 common mode + 差速 differential mode”的设计。  
+   注意：它证明的是双推进器差速控制适合无舵船，不是严格证明“网页双杆 UI 永远最优”。  
+   链接：  
+   - https://pmc.ncbi.nlm.nih.gov/articles/PMC6539673/
+   - https://www.mdpi.com/1424-8220/19/9/2051
+
 1. Kanayama, Y., Kimura, Y., Miyazaki, F., Noguchi, T.  
    *A stable tracking control method for an autonomous mobile robot*, IEEE International Conference on Robotics and Automation, 1990.  
    作用：支持“不要让输入直接变成马达瞬时输出”，而应使用速度目标、平滑和稳定跟踪控制思想。  
@@ -44,4 +53,3 @@
 ## 对我们小船的结论
 
 这些资料支持的是控制架构，而不是水面动力学的完全等价证明。我们的小船仍然需要实测调参，因为水面阻力、螺旋桨负载、电池电压和左右马达差异都会影响实际表现。
-
