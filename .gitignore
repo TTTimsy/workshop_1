@@ -23,3 +23,6 @@ __pycache__/
 
 # Generated song header (regenerate from MIDI as needed)
 src/song.h
+
+# Local Wi-Fi credentials for AP+STA field testing
+src/local_wifi_config.h
