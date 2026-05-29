@@ -206,28 +206,21 @@ public:
   }
 
   void safeReleasePins() {
-    // 烧录前使用：停止 PWM，脱离 LEDC，再把引脚切到内部下拉输入。
-    // 这样固件主动进入 bootloader 前，马达驱动输入先处于安全低电平。
+    // 烧录前使用：停止 PWM，并尽量把引脚主动保持在低电平。
+    // 注意：进入 bootloader 以后 MCU 会 reset，固件无法继续保证 GPIO 状态。
     _noteEndTime = 0;
     _noteDuty = 0;
     currentSpeed = 0;
     currentDirection = 0;
 
-    if (_pinsAttached) {
-      ledcWrite(channel1, 0);
-      ledcWrite(channel2, 0);
-      ledcDetachPin(pin1);
-      ledcDetachPin(pin2);
-      _pinsAttached = false;
-    }
-
+    attachPwmPins();
+    ledcWrite(channel1, 0);
+    ledcWrite(channel2, 0);
+    delayMicroseconds(200);
     pinMode(pin1, OUTPUT);
     pinMode(pin2, OUTPUT);
     digitalWrite(pin1, LOW);
     digitalWrite(pin2, LOW);
-    delayMicroseconds(200);
-    pinMode(pin1, INPUT_PULLDOWN);
-    pinMode(pin2, INPUT_PULLDOWN);
   }
 
   int  getSpeed() const { return currentSpeed; }
