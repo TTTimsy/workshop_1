@@ -26,24 +26,25 @@ void onStartMotors() {
   // ✏️  Write your chime here. See README.md for step-by-step examples.
   //     Queue notes with chime.add() / chime.startStep(), then chime.play().
 
-  // === TASK 1 SOLUTION CODE - COMMENTED OUT ===
-  // 下面这些被注释掉的行就是 Task 1 的参考答案；去掉每行开头的 // 后才会真正执行。
-  // chime.startStep();                         // 开始第 1 个和弦步骤，让后面加入的音符同时播放。
-  // chime.addToStep(&motorA, NOTE_C4, 80);      // 让 motorA 在第 1 步播放 C4，力度/duty 为 80。
-  // chime.addToStep(&motorB, NOTE_E4, 60);      // 让 motorB 在第 1 步播放 E4，力度稍小形成和声。
-  // chime.endStep(250);                         // 结束第 1 步，并让这一组音符持续 250 毫秒。
-  // chime.startStep();                         // 开始第 2 个和弦步骤。
-  // chime.addToStep(&motorA, NOTE_E4, 80);      // 让 motorA 在第 2 步播放 E4。
-  // chime.addToStep(&motorB, NOTE_G4, 60);      // 让 motorB 在第 2 步播放 G4，继续形成和声。
-  // chime.endStep(250);                         // 结束第 2 步，并持续 250 毫秒。
-  // chime.startStep();                         // 开始第 3 个和弦步骤。
-  // chime.addToStep(&motorA, NOTE_G4, 90);      // 让 motorA 在第 3 步播放 G4，力度略强作为收尾。
-  // chime.addToStep(&motorB, NOTE_C5, 70);      // 让 motorB 在第 3 步播放 C5，让结尾更明亮。
-  // chime.endStep(450);                         // 结束第 3 步，并持续 450 毫秒。
-  // chime.play();                               // 开始播放上面排好的所有旋律步骤；没有这一行就不会发声。
+  // === TASK 1 SOLUTION CODE - ACTIVE FOR UPLOAD ===
+  chime.clear();                             // 清空开机旋律留下的队列，确保 START 只播放下面这段旋律。
+  // 下面这些行已经启用：按网页 START 按钮时，两路电机会播放三段启动和弦。
+  chime.startStep();                         // 开始第 1 个和弦步骤，让后面加入的音符同时播放。
+  chime.addToStep(&motorA, NOTE_C4, 80);      // 让 motorA 在第 1 步播放 C4，力度/duty 为 80。
+  chime.addToStep(&motorB, NOTE_E4, 60);      // 让 motorB 在第 1 步播放 E4，力度稍小形成和声。
+  chime.endStep(250);                         // 结束第 1 步，并让这一组音符持续 250 毫秒。
+  chime.startStep();                         // 开始第 2 个和弦步骤。
+  chime.addToStep(&motorA, NOTE_E4, 80);      // 让 motorA 在第 2 步播放 E4。
+  chime.addToStep(&motorB, NOTE_G4, 60);      // 让 motorB 在第 2 步播放 G4，继续形成和声。
+  chime.endStep(250);                         // 结束第 2 步，并持续 250 毫秒。
+  chime.startStep();                         // 开始第 3 个和弦步骤。
+  chime.addToStep(&motorA, NOTE_G4, 90);      // 让 motorA 在第 3 步播放 G4，力度略强作为收尾。
+  chime.addToStep(&motorB, NOTE_C5, 70);      // 让 motorB 在第 3 步播放 C5，让结尾更明亮。
+  chime.endStep(450);                         // 结束第 3 步，并持续 450 毫秒。
+  chime.play();                               // 开始播放上面排好的所有旋律步骤；没有这一行就不会发声。
   // === END TASK 1 SOLUTION CODE ===
 
-  // 这里目前只打印日志；练习目标是让学生取消上方 Task 1 代码的注释。
+  // 打印日志，方便在串口监视器中确认 START 命令已经触发。
   Serial.println("[Motor] Chime started — motors enabled");
 }
 
@@ -64,26 +65,26 @@ void onMotorCommand(char motor, int speed) {
 
   if (speed > 0) {
     // speed 为正数时应该调用 m->forward(speed)，并点亮对应 LED。
-    // === TASK 2 SOLUTION CODE - COMMENTED OUT: FORWARD ===
-    // m->forward(speed);                    // 让当前选中的电机按正数 speed 前进。
-    // digitalWrite(ledPin, HIGH);           // 电机运行时点亮对应 LED，提示这一路电机正在工作。
-    // Serial.printf("Motor %c -> FWD  speed=%d\n", motor, speed);  // 在串口打印前进方向和速度，方便调试。
+    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: FORWARD ===
+    m->forward(speed);                    // 让当前选中的电机按正数 speed 前进。
+    digitalWrite(ledPin, HIGH);           // 电机运行时点亮对应 LED，提示这一路电机正在工作。
+    Serial.printf("Motor %c -> FWD  speed=%d\n", motor, speed);  // 在串口打印前进方向和速度，方便调试。
     // === END TASK 2 FORWARD CODE ===
 
   } else if (speed < 0) {
     // speed 为负数时应该调用 m->backward(-speed)，负负得正得到 PWM 占空比。
-    // === TASK 2 SOLUTION CODE - COMMENTED OUT: BACKWARD ===
-    // m->backward(-speed);                  // speed 是负数，取 -speed 变成正数后让电机后退。
-    // digitalWrite(ledPin, HIGH);           // 电机后退时也点亮对应 LED。
-    // Serial.printf("Motor %c -> BWD  speed=%d\n", motor, -speed); // 在串口打印后退方向和实际 PWM 速度。
+    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: BACKWARD ===
+    m->backward(-speed);                  // speed 是负数，取 -speed 变成正数后让电机后退。
+    digitalWrite(ledPin, HIGH);           // 电机后退时也点亮对应 LED。
+    Serial.printf("Motor %c -> BWD  speed=%d\n", motor, -speed); // 在串口打印后退方向和实际 PWM 速度。
     // === END TASK 2 BACKWARD CODE ===
 
   } else {
     // speed 为 0 时应该停止电机并熄灭对应 LED。
-    // === TASK 2 SOLUTION CODE - COMMENTED OUT: STOP ===
-    // m->stop();                            // 停止当前选中的电机。
-    // digitalWrite(ledPin, LOW);            // 电机停止后熄灭对应 LED。
-    // Serial.printf("Motor %c -> STOP\n", motor); // 在串口打印停止状态，确认松开滑杆后命令已发送。
+    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: STOP ===
+    m->stop();                            // 停止当前选中的电机。
+    digitalWrite(ledPin, LOW);            // 电机停止后熄灭对应 LED。
+    Serial.printf("Motor %c -> STOP\n", motor); // 在串口打印停止状态，确认松开滑杆后命令已发送。
     // === END TASK 2 STOP CODE ===
 
   }
@@ -93,6 +94,7 @@ void onMotorCommand(char motor, int speed) {
 // Startup chime — plays a short descending harmony on boot
 // ---------------------------------------------------------------------------
 void playStartupChime() {
+  chime.clear();                             // 开机旋律单独成队列，避免和后续 START 旋律混在一起。
   // 每个 startStep()/endStep() 表示一个同时播放的和弦步骤。
   chime.startStep();
   chime.addToStep(&motorA, NOTE_G4, 50);     // G4

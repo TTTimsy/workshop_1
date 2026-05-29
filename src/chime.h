@@ -202,6 +202,11 @@ public:
       _currentStep(-1), _started(false),
       _pendingNotes(nullptr), _pendingCount(0), _pendingCapacity(0) {}
 
+  void clear() {
+    // 清空当前旋律队列，避免开机旋律、START 旋律或 MIDI 歌曲互相追加。
+    _clear();
+  }
+
   // --- Single-note convenience (old behaviour) --------------------------
   void add(Motor* motor, int freq, int duty, int durationMs) {
     // 单音是“一步里只有一个音符”的简写。
@@ -346,12 +351,26 @@ private:
   int        _pendingCapacity;
 
   void _clear() {
-    // 这里目前只重置计数；如果频繁 loadSong，可进一步释放各步骤 notes 以避免内存泄漏。
+    // 先停止当前队列里引用过的电机音符，再释放每一步的音符数组。
+    for (int s = 0; s < _stepCount; s++) {
+      if (_steps[s].notes) {
+        for (int n = 0; n < _steps[s].noteCount; n++) {
+          if (_steps[s].notes[n].motor) _steps[s].notes[n].motor->stopNote();
+        }
+        delete[] _steps[s].notes;
+      }
+    }
+    delete[] _steps;
+    _steps = nullptr;
     _stepCount = 0;
     _stepCapacity = 0;
     _currentStep = -1;
     _started = false;
+
+    delete[] _pendingNotes;
+    _pendingNotes = nullptr;
     _pendingCount = 0;
+    _pendingCapacity = 0;
   }
 
   void _playStep(int idx) {
