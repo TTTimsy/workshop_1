@@ -1,5 +1,6 @@
 #include "boat_controller.h"
 #include "ap_manager.h"
+#include "boat_config.h"
 #include "html.h"
 
 #include <WiFi.h>
@@ -8,11 +9,11 @@
 #include <DNSServer.h>
 #include <ArduinoJson.h>
 
-// boat_controller.cpp 负责把网页遥控器和 main.cpp 里的电机控制函数连接起来。
-// 浏览器通过 WebSocket 发送 JSON，固件解析后回调 onStartMotors()/onMotorCommand()。
+// boat_controller.cpp owns networking only:
+// Wi-Fi AP, captive portal HTTP, WebSocket state, and controller ownership.
 
 // ---------------------------------------------------------------------------
-// Internal globals (hidden from the student)
+// Internal globals
 // ---------------------------------------------------------------------------
 static APManager        apManager;
 static WebServer        httpServer(80);
@@ -20,12 +21,13 @@ static WebSocketsServer wsServer(81);
 static DNSServer        dnsServer;
 
 static constexpr byte DNS_PORT = 53;
+static constexpr int  NO_CONTROLLER = -1;
 
-// START 按下前不接受油门指令，避免网页刚连上就误转电机。
 static bool motorsEnabled = false;
-// 记录是否曾经有客户端连上；没连上时串口会重复打印 SSID/IP。
+static int activeController = NO_CONTROLLER;
+static unsigned long lastDrivePacketAt = 0;
+
 static bool clientWasEverConnected = false;
-// 上一次打印连接提示 banner 的时间。
 static unsigned long lastBannerPrint = 0;
 
 static String controlPageUrl() {
@@ -33,14 +35,12 @@ static String controlPageUrl() {
 }
 
 static void sendControlPage() {
-  // no-store 避免手机 captive portal 小浏览器缓存旧页面。
   httpServer.sendHeader("Cache-Control", "no-store");
   httpServer.sendHeader("Connection", "close");
   httpServer.send(200, "text/html", INDEX_HTML);
 }
 
 static void redirectToControlPage() {
-  // 手机系统访问检测地址时，把它带回 192.168.4.1 的控制页。
   httpServer.sendHeader("Location", controlPageUrl(), true);
   httpServer.sendHeader("Cache-Control", "no-store");
   httpServer.sendHeader("Connection", "close");
@@ -63,70 +63,140 @@ static void registerCaptivePortalRoutes() {
   httpServer.on("/ncsi.txt", redirectToControlPage);
   httpServer.on("/fwlink", redirectToControlPage);
 
-  // Any unknown host/path should still land on the boat controller.
   httpServer.onNotFound(redirectToControlPage);
 }
 
+static void sendState(uint8_t num) {
+  char buf[96];
+  snprintf(buf, sizeof(buf),
+           "{\"clientId\":%u,\"motorsEnabled\":%s,\"activeController\":%d}",
+           num,
+           motorsEnabled ? "true" : "false",
+           activeController);
+  wsServer.sendTXT(num, buf);
+}
+
+static void broadcastState() {
+  char buf[80];
+  snprintf(buf, sizeof(buf),
+           "{\"motorsEnabled\":%s,\"activeController\":%d}",
+           motorsEnabled ? "true" : "false",
+           activeController);
+  wsServer.broadcastTXT(buf);
+}
+
+static bool isActiveController(uint8_t num) {
+  return activeController == (int)num;
+}
+
+static void stopForSafety(const char *reason) {
+  if (!motorsEnabled && activeController == NO_CONTROLLER) return;
+
+  Serial.printf("[SAFE] %s - stopping motors\n", reason);
+  onControllerLost();
+  motorsEnabled = false;
+  activeController = NO_CONTROLLER;
+  lastDrivePacketAt = 0;
+  broadcastState();
+}
+
+static void handleStartCommand(uint8_t num) {
+  if (activeController != NO_CONTROLLER && !isActiveController(num)) {
+    Serial.printf("[WS] START ignored - controller %d already active\n", activeController);
+    sendState(num);
+    return;
+  }
+
+  activeController = num;
+  motorsEnabled = true;
+  lastDrivePacketAt = millis();
+
+  Serial.printf("[WS] Client %u became active controller\n", num);
+  onStartMotors();
+  broadcastState();
+}
+
+static void handleDriveCommand(uint8_t num, JsonDocument &doc) {
+  if (!motorsEnabled || !isActiveController(num)) {
+    Serial.printf("[WS] Drive ignored from client %u\n", num);
+    sendState(num);
+    return;
+  }
+
+  int speedA = constrain(doc["a"] | 0, -255, 255);
+  int speedB = constrain(doc["b"] | 0, -255, 255);
+
+  lastDrivePacketAt = millis();
+  onDriveCommand(speedA, speedB);
+}
+
+static void handleLegacyMotorCommand(uint8_t num, JsonDocument &doc) {
+  const char *motorStr = doc["motor"];
+  int speed = doc["speed"] | 0;
+
+  if (!motorStr || (motorStr[0] != 'a' && motorStr[0] != 'b')) {
+    Serial.println("[WS] Invalid motor");
+    return;
+  }
+
+  if (!motorsEnabled || !isActiveController(num)) {
+    Serial.printf("[WS] Legacy motor ignored from client %u\n", num);
+    sendState(num);
+    return;
+  }
+
+  lastDrivePacketAt = millis();
+  onMotorCommand(motorStr[0], constrain(speed, -255, 255));
+}
+
 // ---------------------------------------------------------------------------
-// WebSocket event -> calls onMotorCommand() / onStartMotors()
+// WebSocket event -> calls main.cpp callbacks
 // ---------------------------------------------------------------------------
 static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) {
   if (type == WStype_CONNECTED) {
-    // 新浏览器连接后，记录状态并同步当前 motorsEnabled 状态。
     clientWasEverConnected = true;
-    Serial.println("[WS] Client connected");
-
-    char buf[32];
-    snprintf(buf, sizeof(buf), "{\"motorsEnabled\":%s}",
-             motorsEnabled ? "true" : "false");
-    wsServer.sendTXT(num, buf);
+    Serial.printf("[WS] Client %u connected\n", num);
+    sendState(num);
     return;
   }
 
   if (type == WStype_DISCONNECTED) {
-    Serial.println("[WS] Client disconnected");
+    Serial.printf("[WS] Client %u disconnected\n", num);
+    if (isActiveController(num)) {
+      stopForSafety("active controller disconnected");
+    }
     return;
   }
 
-  if (type == WStype_TEXT) {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, (const char *)payload);
+  if (type != WStype_TEXT) return;
 
-    if (err) {
-      Serial.printf("[WS] JSON parse error: %s\n", err.c_str());
-      return;
-    }
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, (const char *)payload);
 
-    // App-level keepalive ping -> pong.
-    if (doc["ping"]) {
-      wsServer.sendTXT(num, "{\"pong\":1}");
-      return;
-    }
+  if (err) {
+    Serial.printf("[WS] JSON parse error: %s\n", err.c_str());
+    return;
+  }
 
-    // START command.
-    if (doc["cmd"] && strcmp(doc["cmd"], "start") == 0) {
-      motorsEnabled = true;
-      onStartMotors();
-      wsServer.broadcastTXT("{\"motorsEnabled\":true}");
-      return;
-    }
+  if (doc["ping"]) {
+    wsServer.sendTXT(num, "{\"pong\":1}");
+    return;
+  }
 
-    // Motor command, only accepted after START.
-    const char *motorStr = doc["motor"];
-    int speed = doc["speed"] | 0;
+  const char *cmd = doc["cmd"];
 
-    if (!motorStr || (motorStr[0] != 'a' && motorStr[0] != 'b')) {
-      Serial.println("[WS] Invalid motor");
-      return;
-    }
+  if (cmd && strcmp(cmd, "start") == 0) {
+    handleStartCommand(num);
+    return;
+  }
 
-    if (!motorsEnabled) {
-      Serial.println("[WS] Ignored - motors not enabled");
-      return;
-    }
+  if (cmd && strcmp(cmd, "drive") == 0) {
+    handleDriveCommand(num, doc);
+    return;
+  }
 
-    speed = constrain(speed, -255, 255);
-    onMotorCommand(motorStr[0], speed);
+  if (doc["motor"]) {
+    handleLegacyMotorCommand(num, doc);
   }
 }
 
@@ -134,12 +204,13 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
 // Public API
 // ---------------------------------------------------------------------------
 void setupBoatController() {
-  // ESP32 自己开热点，不需要外部路由器。
   apManager.setMode(WIFI_AP);
   apManager.setPassword("innox1234");
+  if (BOAT_WIFI_CHANNEL != 0) {
+    apManager.setChannel(BOAT_WIFI_CHANNEL);
+  }
   apManager.begin();
 
-  // Captive portal: make any domain resolve to the boat's AP IP.
   dnsServer.start(DNS_PORT, "*", apManager.getIp());
   Serial.printf("[DNS] Captive portal DNS started at %s\n",
                 apManager.getIp().toString().c_str());
@@ -153,7 +224,6 @@ void setupBoatController() {
 }
 
 bool isClientConnected() {
-  // 这里返回“曾经连接过”，不是“当前仍然连接着”。
   return clientWasEverConnected;
 }
 
@@ -162,7 +232,13 @@ void loopBoatController() {
   httpServer.handleClient();
   wsServer.loop();
 
-  // Loop-print the banner every 3 seconds until a client connects.
+  if (motorsEnabled && activeController != NO_CONTROLLER) {
+    unsigned long now = millis();
+    if (now - lastDrivePacketAt > CONTROL_TIMEOUT_MS) {
+      stopForSafety("drive packet timeout");
+    }
+  }
+
   if (!clientWasEverConnected) {
     unsigned long now = millis();
     if (now - lastBannerPrint >= 3000) {

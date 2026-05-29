@@ -1,4 +1,5 @@
 #include "boat_controller.h"
+#include "boat_config.h"
 #include "motor.h"
 #include "chime.h"
 
@@ -18,6 +19,16 @@ Motor motorB(MOTOR_B1, MOTOR_B2);
 // Non-blocking chime player — auto-advances through a note sequence
 // chime 是非阻塞旋律队列；loop() 每次调用 chime.update() 推进下一拍。
 ChimePlayer chime;
+
+void stopAllMotors() {
+  if (chime.isPlaying()) chime.clear();
+
+  motorA.stop();
+  motorB.stop();
+  digitalWrite(LED_A, LOW);
+  digitalWrite(LED_B, LOW);
+  Serial.println("[Motor] SAFETY STOP - both motors stopped");
+}
 
 // ===========================================================================
 //  ✏️  TASK 1: Play a chime when START is pressed
@@ -53,7 +64,10 @@ void onStartMotors() {
 // ===========================================================================
 void onMotorCommand(char motor, int speed) {
   // 滑杆控制优先级最高：一旦用户拖动滑杆，就停止还在播放的启动旋律。
-  if (chime.isPlaying()) chime.clear();
+  speed = constrain(speed, -255, 255);
+  if (abs(speed) < DRIVE_DEADZONE) speed = 0;
+  if (speed == 0 && chime.isPlaying()) return;
+  if (speed != 0 && chime.isPlaying()) chime.clear();
 
   // These are given to you — no pointers needed!
   // 根据网页传来的 motor 字符选择 A 或 B 电机；不是 'b' 时默认 A。
@@ -91,6 +105,15 @@ void onMotorCommand(char motor, int speed) {
     // === END TASK 2 STOP CODE ===
 
   }
+}
+
+void onDriveCommand(int speedA, int speedB) {
+  onMotorCommand('a', speedA);
+  onMotorCommand('b', speedB);
+}
+
+void onControllerLost() {
+  stopAllMotors();
 }
 
 // ---------------------------------------------------------------------------

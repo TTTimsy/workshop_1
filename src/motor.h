@@ -2,6 +2,7 @@
 #define MOTOR_H
 
 #include <Arduino.h>
+#include "boat_config.h"
 
 // motor.h 封装单个直流电机：
 // 两个 PWM 引脚接到 H 桥，pin1 输出 PWM 表示正转，pin2 输出 PWM 表示反转。
@@ -52,11 +53,12 @@ private:
   // 小直流电机在 20kHz 下可能启动扭矩不够；1kHz 更容易让电机实际转起来。
   static constexpr int PWM_RES  = 8;
   static constexpr int DEF_FREQ = 1000;
-  // 当前调试目标是保证带桨能转起来：非零油门直接给满功率 duty。
-  static constexpr int MIN_RUN_DUTY = 255;
-  // 从停止或换向开始时，先给一个很短的满功率起步脉冲，突破静摩擦和水中负载。
-  static constexpr int START_KICK_DUTY = 255;
-  static constexpr int START_KICK_MS   = 90;
+  int mapDriveDuty(int speed) const {
+    int targetSpeed = constrain(speed, 0, 255);
+    if (targetSpeed < DRIVE_DEADZONE) return 0;
+    return (int)map(targetSpeed, DRIVE_DEADZONE, 255,
+                    DRIVE_MIN_DUTY, DRIVE_MAX_DUTY);
+  }
 
 public:
   // 构造函数保存引脚、分配 PWM 通道、连接引脚并立即停止电机。
@@ -138,14 +140,13 @@ public:
     if (_noteEndTime) stopNote();                           // cancel any playing note
     // 每次滑杆控制都强制恢复电机运行频率，避免被音乐频率影响。
     setFrequency(DEF_FREQ);
-    int targetSpeed = constrain(speed, 0, 255);
-    if (targetSpeed > 0 && targetSpeed < MIN_RUN_DUTY) targetSpeed = MIN_RUN_DUTY;
+    int targetSpeed = mapDriveDuty(speed);
 
     bool needsKick = (targetSpeed > 0) && (currentDirection != 1 || currentSpeed == 0);
     if (needsKick) {
-      ledcWrite(channel1, START_KICK_DUTY);
+      ledcWrite(channel1, DRIVE_START_KICK_DUTY);
       ledcWrite(channel2, 0);
-      delay(START_KICK_MS);
+      delay(DRIVE_START_KICK_MS);
     }
 
     currentSpeed = targetSpeed;
@@ -158,14 +159,13 @@ public:
     // 反转同样会抢占音符播放。
     if (_noteEndTime) stopNote();                           // cancel any playing note
     setFrequency(DEF_FREQ);
-    int targetSpeed = constrain(speed, 0, 255);
-    if (targetSpeed > 0 && targetSpeed < MIN_RUN_DUTY) targetSpeed = MIN_RUN_DUTY;
+    int targetSpeed = mapDriveDuty(speed);
 
     bool needsKick = (targetSpeed > 0) && (currentDirection != -1 || currentSpeed == 0);
     if (needsKick) {
       ledcWrite(channel1, 0);
-      ledcWrite(channel2, START_KICK_DUTY);
-      delay(START_KICK_MS);
+      ledcWrite(channel2, DRIVE_START_KICK_DUTY);
+      delay(DRIVE_START_KICK_MS);
     }
 
     currentSpeed = targetSpeed;

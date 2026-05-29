@@ -242,6 +242,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   let reconnectTimer = null;
   let sendThrottle = {};
   let motorsEnabled = false;
+  let clientId = null;
+  let activeController = -1;
+  let isController = false;
+  let driveInterval = null;
+  let currentSpeeds = { a: 0, b: 0 };
+  const DRIVE_SEND_INTERVAL = 150;
 
   // --- Reconnection state ---
   let reconnectAttempt = 0;
@@ -276,6 +282,80 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       track.style.pointerEvents = enabled ? 'auto' : 'none';
       track.style.opacity = enabled ? '1' : '0.4';
     });
+  }
+
+  function renderSlider(motor, speed) {
+    var track = document.querySelector('.slider-track[data-motor="' + motor + '"]');
+    if (!track) return;
+    var thumb = track.querySelector('.slider-thumb');
+    var speedEl = document.getElementById('speed-' + motor);
+    var frac = 1 - (speed + 255) / 510;
+    var topPx = frac * (track.clientHeight - thumb.clientHeight);
+    thumb.style.top = topPx + 'px';
+    speedEl.textContent = speed;
+  }
+
+  function resetDriveState() {
+    currentSpeeds.a = 0;
+    currentSpeeds.b = 0;
+    renderSlider('a', 0);
+    renderSlider('b', 0);
+  }
+
+  function canDrive() {
+    return motorsEnabled && isController;
+  }
+
+  function sendDriveState() {
+    if (ws && ws.readyState === WebSocket.OPEN && canDrive()) {
+      ws.send(JSON.stringify({
+        cmd: 'drive',
+        a: currentSpeeds.a,
+        b: currentSpeeds.b
+      }));
+    }
+  }
+
+  function startDriveStream() {
+    stopDriveStream();
+    driveInterval = setInterval(sendDriveState, DRIVE_SEND_INTERVAL);
+  }
+
+  function stopDriveStream() {
+    if (driveInterval) {
+      clearInterval(driveInterval);
+      driveInterval = null;
+    }
+  }
+
+  function applyControllerState(data) {
+    if (data.hasOwnProperty('clientId')) clientId = data.clientId;
+    if (data.hasOwnProperty('activeController')) activeController = data.activeController;
+    if (data.hasOwnProperty('motorsEnabled')) motorsEnabled = data.motorsEnabled;
+
+    isController = motorsEnabled && clientId !== null && activeController === clientId;
+    setSlidersEnabled(isController);
+
+    if (!motorsEnabled) {
+      stopDriveStream();
+      resetDriveState();
+      startBtn.textContent = '⏻ START MOTORS';
+      startBtn.classList.remove('active');
+      startBtn.disabled = !(ws && ws.readyState === WebSocket.OPEN);
+      return;
+    }
+
+    if (isController) {
+      startBtn.textContent = '✓ MOTORS ACTIVE';
+      startBtn.classList.add('active');
+      startBtn.disabled = true;
+      startDriveStream();
+    } else {
+      stopDriveStream();
+      startBtn.textContent = 'VIEW ONLY';
+      startBtn.classList.remove('active');
+      startBtn.disabled = true;
+    }
   }
   setSlidersEnabled(false);  // disabled until START
 
@@ -348,26 +428,26 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           handlePong();
           return;
         }
-        if (data.hasOwnProperty('motorsEnabled')) {
-          motorsEnabled = data.motorsEnabled;
-          setSlidersEnabled(motorsEnabled);
-          if (motorsEnabled) {
-            startBtn.textContent = '✓ MOTORS ACTIVE';
-            startBtn.classList.add('active');
-            startBtn.disabled = true;
-          }
+        if (data.hasOwnProperty('motorsEnabled') ||
+            data.hasOwnProperty('activeController') ||
+            data.hasOwnProperty('clientId')) {
+          applyControllerState(data);
         }
       } catch(_) {}
     };
 
     ws.onclose = function() {
       stopKeepalive();
+      stopDriveStream();
       statusEl.textContent = 'Disconnected — reconnecting...';
       statusEl.classList.remove('connected');
 
       // Only reset motors state if we were connected (not on first load)
       if (wasEverConnected) {
         motorsEnabled = false;
+        isController = false;
+        activeController = -1;
+        resetDriveState();
         setSlidersEnabled(false);
         startBtn.textContent = '⏻ START MOTORS';
         startBtn.classList.remove('active');
@@ -408,10 +488,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   });
 
   function sendCmd(motor, speed) {
-    // 只有 WebSocket 打开时才发送油门命令，避免浏览器离线时报错。
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ motor: motor, speed: speed }));
-    }
+    currentSpeeds[motor] = speed;
+    sendDriveState();
   }
 
   // Throttle — max one send per motor per 50ms
