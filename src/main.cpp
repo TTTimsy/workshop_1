@@ -52,6 +52,9 @@ void onStartMotors() {
 //  ✏️  TASK 2: Control motor speed & direction from throttle sliders
 // ===========================================================================
 void onMotorCommand(char motor, int speed) {
+  // 滑杆控制优先级最高：一旦用户拖动滑杆，就停止还在播放的启动旋律。
+  if (chime.isPlaying()) chime.clear();
+
   // These are given to you — no pointers needed!
   // 根据网页传来的 motor 字符选择 A 或 B 电机；不是 'b' 时默认 A。
   Motor *m   = (motor == 'b') ? &motorB : &motorA;
