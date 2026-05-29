@@ -48,11 +48,28 @@ private:
   unsigned long _noteEndTime;   // 0 = no note playing
   // 当前音符的 PWM 占空比，影响电机发声音量/力度。
   int           _noteDuty;
+  // true 表示 GPIO 当前挂在 LEDC PWM 通道上；烧录前安全释放后会变 false。
+  bool          _pinsAttached;
 
   // PWM_RES=8 表示占空比范围 0-255；DEF_FREQ=1kHz 是常规电机 PWM 频率。
   // 小直流电机在 20kHz 下可能启动扭矩不够；1kHz 更容易让电机实际转起来。
   static constexpr int PWM_RES  = 8;
   static constexpr int DEF_FREQ = 1000;
+
+  void attachPwmPins() {
+    if (_pinsAttached) return;
+
+    pinMode(pin1, OUTPUT);
+    pinMode(pin2, OUTPUT);
+    digitalWrite(pin1, LOW);
+    digitalWrite(pin2, LOW);
+    ledcAttachPin(pin1, channel1);
+    ledcAttachPin(pin2, channel2);
+    _pinsAttached = true;
+    ledcWrite(channel1, 0);
+    ledcWrite(channel2, 0);
+  }
+
   int mapDriveDuty(int speed) const {
     int targetSpeed = constrain(speed, 0, 255);
     if (targetSpeed < DRIVE_DEADZONE) return 0;
@@ -64,19 +81,19 @@ public:
   // 构造函数保存引脚、分配 PWM 通道、连接引脚并立即停止电机。
   Motor(int p1, int p2)
     : pin1(p1), pin2(p2), currentSpeed(0), currentDirection(0), currentFreq(DEF_FREQ),
-      _noteEndTime(0), _noteDuty(0) {
+      _noteEndTime(0), _noteDuty(0), _pinsAttached(false) {
     static int nextChannel = 0;
     channel1 = nextChannel++;
     channel2 = nextChannel++;
     ledcSetup(channel1, DEF_FREQ, PWM_RES);
     ledcSetup(channel2, DEF_FREQ, PWM_RES);
-    ledcAttachPin(pin1, channel1);
-    ledcAttachPin(pin2, channel2);
+    attachPwmPins();
     stop();    // ensure pins start LOW, no stray signals
   }
 
   // Change PWM frequency for both channels (e.g. for musical chime notes)
   void setFrequency(int freqHz) {
+    attachPwmPins();
     // 两个方向通道保持相同频率，避免正反转切换时频率不一致。
     currentFreq = freqHz;
     ledcChangeFrequency(channel1, freqHz, PWM_RES);
@@ -107,8 +124,10 @@ public:
       _noteDuty = 0;
       currentSpeed = 0;
       currentDirection = 0;
-      ledcWrite(channel1, 0);
-      ledcWrite(channel2, 0);
+      if (_pinsAttached) {
+        ledcWrite(channel1, 0);
+        ledcWrite(channel2, 0);
+      }
     }
   }
 
@@ -122,8 +141,10 @@ public:
     _noteDuty = 0;
     currentSpeed = 0;
     currentDirection = 0;
-    ledcWrite(channel1, 0);
-    ledcWrite(channel2, 0);
+    if (_pinsAttached) {
+      ledcWrite(channel1, 0);
+      ledcWrite(channel2, 0);
+    }
   }
 
   // --- Blocking helpers (kept for convenience) --------------------------
@@ -178,8 +199,35 @@ public:
     // 停止就是两个 H 桥输入都拉低，让电机不再主动驱动。
     currentSpeed = 0;
     currentDirection = 0;
-    ledcWrite(channel1, 0);
-    ledcWrite(channel2, 0);
+    if (_pinsAttached) {
+      ledcWrite(channel1, 0);
+      ledcWrite(channel2, 0);
+    }
+  }
+
+  void safeReleasePins() {
+    // 烧录前使用：停止 PWM，脱离 LEDC，再把引脚切到内部下拉输入。
+    // 这样固件主动进入 bootloader 前，马达驱动输入先处于安全低电平。
+    _noteEndTime = 0;
+    _noteDuty = 0;
+    currentSpeed = 0;
+    currentDirection = 0;
+
+    if (_pinsAttached) {
+      ledcWrite(channel1, 0);
+      ledcWrite(channel2, 0);
+      ledcDetachPin(pin1);
+      ledcDetachPin(pin2);
+      _pinsAttached = false;
+    }
+
+    pinMode(pin1, OUTPUT);
+    pinMode(pin2, OUTPUT);
+    digitalWrite(pin1, LOW);
+    digitalWrite(pin2, LOW);
+    delayMicroseconds(200);
+    pinMode(pin1, INPUT_PULLDOWN);
+    pinMode(pin2, INPUT_PULLDOWN);
   }
 
   int  getSpeed() const { return currentSpeed; }

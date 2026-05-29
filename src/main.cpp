@@ -2,6 +2,7 @@
 #include "boat_config.h"
 #include "motor.h"
 #include "chime.h"
+#include "upload_safety.h"
 
 // main.cpp 是学生主要动手的入口文件：
 // 1. 定义两路电机对象 motorA/motorB。
@@ -34,6 +35,8 @@ void stopAllMotors() {
 //  ✏️  TASK 1: Play a chime when START is pressed
 // ===========================================================================
 void onStartMotors() {
+  if (blockStartForUploadSafety()) return;
+
   // ✏️  Write your chime here. See README.md for step-by-step examples.
   //     Queue notes with chime.add() / chime.startStep(), then chime.play().
 
@@ -63,6 +66,8 @@ void onStartMotors() {
 //  ✏️  TASK 2: Control motor speed & direction from throttle sliders
 // ===========================================================================
 void onMotorCommand(char motor, int speed) {
+  if (blockMotorCommandForUploadSafety(speed)) return;
+
   // 滑杆控制优先级最高：一旦用户拖动滑杆，就停止还在播放的启动旋律。
   speed = constrain(speed, -255, 255);
   if (abs(speed) < DRIVE_DEADZONE) speed = 0;
@@ -157,6 +162,9 @@ void setup() {
   pinMode(LED_B, OUTPUT);
   digitalWrite(LED_A, LOW);    // both LEDs start OFF
   digitalWrite(LED_B, LOW);
+  motorA.stop();
+  motorB.stop();
+  setupUploadSafety(&motorA, &motorB, &chime, LED_A, LED_B);
 
   // Brief USB CDC wait (250 ms is usually enough on CDC-with-wait-loop)
   for (int i = 0; i < 4; i++) {
@@ -195,11 +203,15 @@ void setup() {
 }
 
 void loop() {
+  loopUploadSafety();
+
   // Advance any playing chime notes
   // 电机和旋律都是非阻塞的，必须在 loop() 里不断 update。
-  motorA.update();
-  motorB.update();
-  chime.update();
+  if (!isUploadSafetyMode()) {
+    motorA.update();
+    motorB.update();
+    chime.update();
+  }
 
   // 处理网页请求、WebSocket 消息和串口连接提示。
   loopBoatController();
