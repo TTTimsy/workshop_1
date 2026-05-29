@@ -38,6 +38,8 @@ private:
   int channel2;
   // 记录最近一次设置的速度或音符 duty。
   int currentSpeed;
+  // 记录当前方向：1 前进，-1 后退，0 停止/播放音符。
+  int currentDirection;
   // 记录当前 PWM 频率；普通电机控制使用 DEF_FREQ，音符播放使用音高频率。
   int currentFreq;
 
@@ -46,14 +48,20 @@ private:
   // 当前音符的 PWM 占空比，影响电机发声音量/力度。
   int           _noteDuty;
 
-  // PWM_RES=8 表示占空比范围 0-255；DEF_FREQ=20kHz 是常规电机 PWM 频率。
+  // PWM_RES=8 表示占空比范围 0-255；DEF_FREQ=1kHz 是常规电机 PWM 频率。
+  // 小直流电机在 20kHz 下可能启动扭矩不够；1kHz 更容易让电机实际转起来。
   static constexpr int PWM_RES  = 8;
-  static constexpr int DEF_FREQ = 20000;
+  static constexpr int DEF_FREQ = 1000;
+  // 当前调试目标是保证带桨能转起来：非零油门直接给满功率 duty。
+  static constexpr int MIN_RUN_DUTY = 255;
+  // 从停止或换向开始时，先给一个很短的满功率起步脉冲，突破静摩擦和水中负载。
+  static constexpr int START_KICK_DUTY = 255;
+  static constexpr int START_KICK_MS   = 90;
 
 public:
   // 构造函数保存引脚、分配 PWM 通道、连接引脚并立即停止电机。
   Motor(int p1, int p2)
-    : pin1(p1), pin2(p2), currentSpeed(0), currentFreq(DEF_FREQ),
+    : pin1(p1), pin2(p2), currentSpeed(0), currentDirection(0), currentFreq(DEF_FREQ),
       _noteEndTime(0), _noteDuty(0) {
     static int nextChannel = 0;
     channel1 = nextChannel++;
@@ -96,6 +104,7 @@ public:
       _noteEndTime = 0;
       _noteDuty = 0;
       currentSpeed = 0;
+      currentDirection = 0;
       ledcWrite(channel1, 0);
       ledcWrite(channel2, 0);
     }
@@ -110,6 +119,7 @@ public:
     _noteEndTime = 0;
     _noteDuty = 0;
     currentSpeed = 0;
+    currentDirection = 0;
     ledcWrite(channel1, 0);
     ledcWrite(channel2, 0);
   }
@@ -126,9 +136,20 @@ public:
   void forward(int speed = 255) {
     // 正常控制电机前先取消音符播放。
     if (_noteEndTime) stopNote();                           // cancel any playing note
-    // 如果刚播放过低频音符，把 PWM 频率恢复到普通电机频率。
-    if (currentFreq < DEF_FREQ) setFrequency(DEF_FREQ);    // reset from chime mode
-    currentSpeed = constrain(speed, 0, 255);
+    // 每次滑杆控制都强制恢复电机运行频率，避免被音乐频率影响。
+    setFrequency(DEF_FREQ);
+    int targetSpeed = constrain(speed, 0, 255);
+    if (targetSpeed > 0 && targetSpeed < MIN_RUN_DUTY) targetSpeed = MIN_RUN_DUTY;
+
+    bool needsKick = (targetSpeed > 0) && (currentDirection != 1 || currentSpeed == 0);
+    if (needsKick) {
+      ledcWrite(channel1, START_KICK_DUTY);
+      ledcWrite(channel2, 0);
+      delay(START_KICK_MS);
+    }
+
+    currentSpeed = targetSpeed;
+    currentDirection = (currentSpeed > 0) ? 1 : 0;
     ledcWrite(channel1, currentSpeed);
     ledcWrite(channel2, 0);
   }
@@ -136,8 +157,19 @@ public:
   void backward(int speed = 255) {
     // 反转同样会抢占音符播放。
     if (_noteEndTime) stopNote();                           // cancel any playing note
-    if (currentFreq < DEF_FREQ) setFrequency(DEF_FREQ);    // reset from chime mode
-    currentSpeed = constrain(speed, 0, 255);
+    setFrequency(DEF_FREQ);
+    int targetSpeed = constrain(speed, 0, 255);
+    if (targetSpeed > 0 && targetSpeed < MIN_RUN_DUTY) targetSpeed = MIN_RUN_DUTY;
+
+    bool needsKick = (targetSpeed > 0) && (currentDirection != -1 || currentSpeed == 0);
+    if (needsKick) {
+      ledcWrite(channel1, 0);
+      ledcWrite(channel2, START_KICK_DUTY);
+      delay(START_KICK_MS);
+    }
+
+    currentSpeed = targetSpeed;
+    currentDirection = (currentSpeed > 0) ? -1 : 0;
     ledcWrite(channel1, 0);
     ledcWrite(channel2, currentSpeed);
   }
@@ -145,6 +177,7 @@ public:
   void stop() {
     // 停止就是两个 H 桥输入都拉低，让电机不再主动驱动。
     currentSpeed = 0;
+    currentDirection = 0;
     ledcWrite(channel1, 0);
     ledcWrite(channel2, 0);
   }
