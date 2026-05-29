@@ -94,6 +94,7 @@ public:
   // Change PWM frequency for both channels (e.g. for musical chime notes)
   void setFrequency(int freqHz) {
     attachPwmPins();
+    if (currentFreq == freqHz) return;
     // 两个方向通道保持相同频率，避免正反转切换时频率不一致。
     currentFreq = freqHz;
     ledcChangeFrequency(channel1, freqHz, PWM_RES);
@@ -156,43 +157,45 @@ public:
     update();
   }
 
-  void forward(int speed = 255) {
-    // 正常控制电机前先取消音符播放。
+  void forwardDuty(int duty = 255) {
+    // DriveSystem 调用这个函数时，duty 已经是最终 PWM，占空比不再二次映射。
     if (_noteEndTime) stopNote();                           // cancel any playing note
-    // 每次滑杆控制都强制恢复电机运行频率，避免被音乐频率影响。
     setFrequency(DEF_FREQ);
-    int targetSpeed = mapDriveDuty(speed);
-
-    bool needsKick = (targetSpeed > 0) && (currentDirection != 1 || currentSpeed == 0);
-    if (needsKick) {
-      ledcWrite(channel1, DRIVE_START_KICK_DUTY);
-      ledcWrite(channel2, 0);
-      delay(DRIVE_START_KICK_MS);
-    }
-
-    currentSpeed = targetSpeed;
+    currentSpeed = constrain(duty, 0, 255);
     currentDirection = (currentSpeed > 0) ? 1 : 0;
     ledcWrite(channel1, currentSpeed);
     ledcWrite(channel2, 0);
   }
 
-  void backward(int speed = 255) {
-    // 反转同样会抢占音符播放。
+  void backwardDuty(int duty = 255) {
+    // DriveSystem 调用这个函数时，duty 已经是最终 PWM，占空比不再二次映射。
     if (_noteEndTime) stopNote();                           // cancel any playing note
     setFrequency(DEF_FREQ);
-    int targetSpeed = mapDriveDuty(speed);
-
-    bool needsKick = (targetSpeed > 0) && (currentDirection != -1 || currentSpeed == 0);
-    if (needsKick) {
-      ledcWrite(channel1, 0);
-      ledcWrite(channel2, DRIVE_START_KICK_DUTY);
-      delay(DRIVE_START_KICK_MS);
-    }
-
-    currentSpeed = targetSpeed;
+    currentSpeed = constrain(duty, 0, 255);
     currentDirection = (currentSpeed > 0) ? -1 : 0;
     ledcWrite(channel1, 0);
     ledcWrite(channel2, currentSpeed);
+  }
+
+  void driveDuty(int signedDuty) {
+    signedDuty = constrain(signedDuty, -255, 255);
+    if (signedDuty > 0) {
+      forwardDuty(signedDuty);
+    } else if (signedDuty < 0) {
+      backwardDuty(-signedDuty);
+    } else {
+      stop();
+    }
+  }
+
+  void forward(int speed = 255) {
+    // Legacy helper: speed 是用户输入强度，先映射到有效 PWM，再输出。
+    forwardDuty(mapDriveDuty(speed));
+  }
+
+  void backward(int speed = 255) {
+    // Legacy helper: speed 是用户输入强度，先映射到有效 PWM，再输出。
+    backwardDuty(mapDriveDuty(speed));
   }
 
   void stop() {

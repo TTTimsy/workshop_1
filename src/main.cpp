@@ -1,6 +1,7 @@
 #include "boat_controller.h"
 #include "boat_config.h"
 #include "motor.h"
+#include "drive_system.h"
 #include "chime.h"
 #include "upload_safety.h"
 
@@ -17,17 +18,16 @@ Motor motorA(MOTOR_A1, MOTOR_A2);
 // motorB 使用 MOTOR_B1/MOTOR_B2 两个 PWM 引脚控制 B 电机的正反转。
 Motor motorB(MOTOR_B1, MOTOR_B2);
 
+// DriveSystem 是驾驶中间层：网页双杆只给目标，平滑、起步冲量、转向限制都在这里完成。
+DriveSystem driveSystem(motorA, motorB, LED_A, LED_B);
+
 // Non-blocking chime player — auto-advances through a note sequence
 // chime 是非阻塞旋律队列；loop() 每次调用 chime.update() 推进下一拍。
 ChimePlayer chime;
 
 void stopAllMotors() {
   if (chime.isPlaying()) chime.clear();
-
-  motorA.stop();
-  motorB.stop();
-  digitalWrite(LED_A, LOW);
-  digitalWrite(LED_B, LOW);
+  driveSystem.stop();
   Serial.println("[Motor] SAFETY STOP - both motors stopped");
 }
 
@@ -36,6 +36,7 @@ void stopAllMotors() {
 // ===========================================================================
 void onStartMotors() {
   if (blockStartForUploadSafety()) return;
+  driveSystem.stop();
 
   // ✏️  Write your chime here. See README.md for step-by-step examples.
   //     Queue notes with chime.add() / chime.startStep(), then chime.play().
@@ -68,53 +69,29 @@ void onStartMotors() {
 void onMotorCommand(char motor, int speed) {
   if (blockMotorCommandForUploadSafety(speed)) return;
 
-  // 滑杆控制优先级最高：一旦用户拖动滑杆，就停止还在播放的启动旋律。
   speed = constrain(speed, -255, 255);
   if (abs(speed) < DRIVE_DEADZONE) speed = 0;
+
+  // 滑杆控制优先级最高：一旦用户真正给油，就停止还在播放的启动旋律。
   if (speed == 0 && chime.isPlaying()) return;
   if (speed != 0 && chime.isPlaying()) chime.clear();
 
-  // These are given to you — no pointers needed!
-  // 根据网页传来的 motor 字符选择 A 或 B 电机；不是 'b' 时默认 A。
-  Motor *m   = (motor == 'b') ? &motorB : &motorA;
-  // 同样根据电机选择对应 LED，方便用灯显示哪路电机正在动。
-  int ledPin = (motor == 'b') ? LED_B  : LED_A;
-
-  // ✏️  Fill in the logic below.  See README.md for step-by-step examples.
-  //     speed > 0  →  m->forward(speed)   + LED on
-  //     speed < 0  →  m->backward(-speed)  + LED on
-  //     speed == 0 →  m->stop()            + LED off
-
-  if (speed > 0) {
-    // speed 为正数时应该调用 m->forward(speed)，并点亮对应 LED。
-    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: FORWARD ===
-    m->forward(speed);                    // 让当前选中的电机按正数 speed 前进。
-    digitalWrite(ledPin, HIGH);           // 电机运行时点亮对应 LED，提示这一路电机正在工作。
-    Serial.printf("Motor %c -> FWD  speed=%d\n", motor, speed);  // 在串口打印前进方向和速度，方便调试。
-    // === END TASK 2 FORWARD CODE ===
-
-  } else if (speed < 0) {
-    // speed 为负数时应该调用 m->backward(-speed)，负负得正得到 PWM 占空比。
-    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: BACKWARD ===
-    m->backward(-speed);                  // speed 是负数，取 -speed 变成正数后让电机后退。
-    digitalWrite(ledPin, HIGH);           // 电机后退时也点亮对应 LED。
-    Serial.printf("Motor %c -> BWD  speed=%d\n", motor, -speed); // 在串口打印后退方向和实际 PWM 速度。
-    // === END TASK 2 BACKWARD CODE ===
-
-  } else {
-    // speed 为 0 时应该停止电机并熄灭对应 LED。
-    // === TASK 2 SOLUTION CODE - ACTIVE FOR UPLOAD: STOP ===
-    m->stop();                            // 停止当前选中的电机。
-    digitalWrite(ledPin, LOW);            // 电机停止后熄灭对应 LED。
-    Serial.printf("Motor %c -> STOP\n", motor); // 在串口打印停止状态，确认松开滑杆后命令已发送。
-    // === END TASK 2 STOP CODE ===
-
-  }
+  driveSystem.setMotorTarget(motor, speed);
 }
 
 void onDriveCommand(int speedA, int speedB) {
-  onMotorCommand('a', speedA);
-  onMotorCommand('b', speedB);
+  int maxSpeed = max(abs(speedA), abs(speedB));
+  if (blockMotorCommandForUploadSafety(maxSpeed)) return;
+
+  speedA = constrain(speedA, -255, 255);
+  speedB = constrain(speedB, -255, 255);
+  if (abs(speedA) < DRIVE_DEADZONE) speedA = 0;
+  if (abs(speedB) < DRIVE_DEADZONE) speedB = 0;
+
+  if (speedA == 0 && speedB == 0 && chime.isPlaying()) return;
+  if ((speedA != 0 || speedB != 0) && chime.isPlaying()) chime.clear();
+
+  driveSystem.setTarget(speedA, speedB);
 }
 
 void onControllerLost() {
@@ -211,6 +188,9 @@ void loop() {
     motorA.update();
     motorB.update();
     chime.update();
+    if (!chime.isPlaying()) {
+      driveSystem.update();
+    }
   }
 
   // 处理网页请求、WebSocket 消息和串口连接提示。

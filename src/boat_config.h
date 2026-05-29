@@ -40,15 +40,32 @@ static constexpr unsigned long DRIVE_SEND_INTERVAL_MS = 150;
 static constexpr unsigned long CONTROL_TIMEOUT_MS = 700;
 
 // Small joystick/slider jitter below this value is treated as stop.
-static constexpr int DRIVE_DEADZONE = 15;
+static constexpr int DRIVE_DEADZONE = 18;
 
-// Nonzero throttle maps into this duty range. The lower bound is high enough
-// to overcome the propeller load while still preserving slider control.
-static constexpr int DRIVE_MIN_DUTY = 210;
+// Racing profile: nonzero throttle maps into this useful motor range.
+// The lower bound stays high because low PWM cannot reliably spin the prop.
+static constexpr int DRIVE_MIN_DUTY = 220;
+static constexpr int DRIVE_MID_DUTY = 238;
 static constexpr int DRIVE_MAX_DUTY = 255;
 
-// Full-power kick used only when starting from stop or changing direction.
+// DriveSystem update period and output slew limits.
+static constexpr unsigned long DRIVE_UPDATE_INTERVAL_MS = 20;
+static constexpr int DRIVE_ACCEL_STEP = 12;
+static constexpr int DRIVE_DECEL_STEP = 22;
+
+// Full-power kick used only when starting from stop or after direction change.
 static constexpr int DRIVE_START_KICK_DUTY = 255;
-static constexpr int DRIVE_START_KICK_MS = 150;
+static constexpr int DRIVE_START_KICK_MS = 120;
+
+// High-speed turning guard. Low speed keeps flexible tank steering; high speed
+// limits left/right thrust difference so the boat does not snap-turn.
+static constexpr int DRIVE_SPIN_INPUT_LIMIT = 220;
+static constexpr int DRIVE_HIGH_SPEED_1 = 180;
+static constexpr int DRIVE_HIGH_SPEED_2 = 220;
+static constexpr int DRIVE_DIFF_LIMIT_1 = 90;
+static constexpr int DRIVE_DIFF_LIMIT_2 = 65;
+
+// Direction reversal guard: brake briefly before changing motor direction.
+static constexpr unsigned long DRIVE_REVERSE_BRAKE_MS = 80;
 
 #endif // BOAT_CONFIG_H
