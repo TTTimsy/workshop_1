@@ -45,8 +45,10 @@ private:
   void applyTurnLimit(int inputA, int inputB, int &limitedA, int &limitedB) const;
   int cleanInput(int value) const;
   int mapInputToDuty(int value) const;
-  void updateSide(SideState &side, Motor &motor, int ledPin, unsigned long now);
-  void writeSide(SideState &side, Motor &motor, int ledPin, int signedDuty);
+  void updateSide(SideState &side, Motor &motor, int ledPin,
+                  int polarity, unsigned long now);
+  void writeSide(SideState &side, Motor &motor, int ledPin,
+                 int signedDuty, int polarity);
   static int signOf(int value);
   static int approach(int current, int target, int step);
 

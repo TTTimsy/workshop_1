@@ -39,8 +39,8 @@ void DriveSystem::update() {
   }
   _lastUpdateAt = now;
 
-  updateSide(_sideA, *_motorA, _ledA, now);
-  updateSide(_sideB, *_motorB, _ledB, now);
+  updateSide(_sideA, *_motorA, _ledA, MOTOR_A_DRIVE_POLARITY, now);
+  updateSide(_sideB, *_motorB, _ledB, MOTOR_B_DRIVE_POLARITY, now);
 }
 
 void DriveSystem::stop() {
@@ -93,7 +93,7 @@ int DriveSystem::mapInputToDuty(int value) const {
 }
 
 void DriveSystem::updateSide(SideState &side, Motor &motor,
-                             int ledPin, unsigned long now) {
+                             int ledPin, int polarity, unsigned long now) {
   side.targetDuty = mapInputToDuty(side.targetInput);
 
   int target = side.targetDuty;
@@ -149,15 +149,16 @@ void DriveSystem::updateSide(SideState &side, Motor &motor,
     }
   }
 
-  writeSide(side, motor, ledPin, command);
+  writeSide(side, motor, ledPin, command, polarity);
 }
 
 void DriveSystem::writeSide(SideState &side, Motor &motor,
-                            int ledPin, int signedDuty) {
+                            int ledPin, int signedDuty, int polarity) {
   signedDuty = constrain(signedDuty, -DRIVE_MAX_DUTY, DRIVE_MAX_DUTY);
-  side.outputDuty = signedDuty;
-  motor.driveDuty(signedDuty);
-  digitalWrite(ledPin, signedDuty == 0 ? LOW : HIGH);
+  int electricalDuty = signedDuty * ((polarity < 0) ? -1 : 1);
+  side.outputDuty = electricalDuty;
+  motor.driveDuty(electricalDuty);
+  digitalWrite(ledPin, electricalDuty == 0 ? LOW : HIGH);
 }
 
 int DriveSystem::signOf(int value) {

@@ -68,4 +68,9 @@ static constexpr int DRIVE_DIFF_LIMIT_2 = 65;
 // Direction reversal guard: brake briefly before changing motor direction.
 static constexpr unsigned long DRIVE_REVERSE_BRAKE_MS = 80;
 
+// Motor electrical polarity. Use -1 when the motor wiring/propeller makes
+// positive boat thrust happen on Motor.backwardDuty().
+static constexpr int MOTOR_A_DRIVE_POLARITY = -1;
+static constexpr int MOTOR_B_DRIVE_POLARITY = -1;
+
 #endif // BOAT_CONFIG_H
